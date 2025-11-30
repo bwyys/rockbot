@@ -587,5 +587,8 @@ async def cmd_help(ctx: commands.Context):
         "`r.reload` reload rocks (bot owner only)"
     )
 
+if not TOKEN:
+    raise RuntimeError("DISCORD_TOKEN environment variable is not set!")
+
 
 bot.run(TOKEN)
