@@ -9,7 +9,7 @@ import os
 import string
 import csv
 
-TOKEN = "DISCORD_TOKEN"
+TOKEN = os.getenv("DISCORD_TOKEN")
 
 # 🔗 Google Sheets CSV URL (replace this with your real URL)
 CSV_URL = "https://docs.google.com/spreadsheets/d/1oV3XHbkhez2SgCxNGZpqxNnGoB7GppmcdHKLX98b9K4/export?format=csv&gid=0"
