@@ -60,6 +60,9 @@ FALLBACK_ROCKS: List[Dict[str, Any]] = [
     },
 ]
 
+# channel_id -> last rock shown in that channel
+LAST_ROCK: Dict[int, Dict[str, Any]] = {}
+
 # This will hold the active dataset
 ROCKS: List[Dict[str, Any]] = FALLBACK_ROCKS.copy()
 
@@ -306,7 +309,23 @@ async def show_rock_view(ctx: commands.Context):
     had_active = channel_id in ACTIVE_QUESTIONS
 
     if not had_active:
-        rock = random.choice(ROCKS)
+        # New round: pick a rock that is NOT the same as the last one in this channel
+        last_rock = LAST_ROCK.get(channel_id)
+        candidates = ROCKS
+
+        if last_rock and len(ROCKS) > 1:
+            # Filter out the last rock by id (fallback: by name if no id)
+            last_id = last_rock.get("id")
+            if last_id is not None:
+                candidates = [r for r in ROCKS if r.get("id") != last_id]
+            else:
+                candidates = [r for r in ROCKS if r.get("name") != last_rock.get("name")]
+
+            # Safety fallback: if filtering somehow empties the list, use full ROCKS
+            if not candidates:
+                candidates = ROCKS
+
+        rock = random.choice(candidates)
         img = choose_image(rock)
         ACTIVE_QUESTIONS[channel_id] = {
             "rock": rock,
@@ -314,6 +333,7 @@ async def show_rock_view(ctx: commands.Context):
         }
         header = "Here you go! New rock for this channel."
     else:
+        # Same rock, new view
         state = ACTIVE_QUESTIONS[channel_id]
         rock = state["rock"]
         last_img = state["current_image"]
@@ -323,6 +343,7 @@ async def show_rock_view(ctx: commands.Context):
 
     await ctx.send(f"**{header}**  (Use `r.help` for commands.)")
     await send_image_file(ctx, img)
+
 
 
 # -------- BOT SETUP (CASE-INSENSITIVE PREFIX & COMMANDS) --------
@@ -403,8 +424,12 @@ async def cmd_c(ctx: commands.Context, *, guess: Optional[str] = None):
             "Use `r.r` for a new rock in this channel."
         )
 
+        # Remember this rock as the last one used in this channel
+    LAST_ROCK[channel_id] = rock
+
     # End the round for this channel
     del ACTIVE_QUESTIONS[channel_id]
+
 
     await ctx.send(msg)
     await send_image_file(ctx, img)
@@ -422,22 +447,35 @@ async def cmd_h(ctx: commands.Context):
     state = ACTIVE_QUESTIONS[channel_id]
     rock = state["rock"]
 
-    hardness = rock.get("hardness", "Unknown")
-    luster = rock.get("luster", "Unknown")
-    streak = rock.get("streak", "Unknown")
-    category = rock.get("category", "Unknown")
-    density = rock.get("density", "Unknown")   # NEW FIELD
+    # Pull fields (they might not exist on every rock)
+    hardness = rock.get("hardness", "").strip()
+    luster   = rock.get("luster", "").strip()
+    streak   = rock.get("streak", "").strip()
+    category = rock.get("category", "").strip()
+    density  = rock.get("density", "").strip()  # only matters if you added it
 
-    lines = [
-        "Hint for this channel:",
-        f"• Hardness: {hardness}",
-        f"• Luster: {luster}",
-        f"• Streak: {streak}",
-        f"• Category: {category}",
-        f"• Density: {density}",   # NEW
-    ]
+    def is_known(value: str) -> bool:
+        return bool(value) and value.lower() != "unknown"
+
+    lines = ["Hint for this channel:"]
+
+    if is_known(hardness):
+        lines.append(f"• Hardness: {hardness}")
+    if is_known(luster):
+        lines.append(f"• Luster: {luster}")
+    if is_known(streak):
+        lines.append(f"• Streak: {streak}")
+    if is_known(category):
+        lines.append(f"• Category: {category}")
+    if is_known(density):
+        lines.append(f"• Density: {density}")
+
+    # Fallback in case literally everything is unknown
+    if len(lines) == 1:
+        lines.append("• (No additional properties available for this rock.)")
 
     await ctx.send("\n".join(lines))
+
 
 @bot.command(name="q", aliases=["quit"])
 async def cmd_q(ctx: commands.Context):
@@ -455,14 +493,17 @@ async def cmd_q(ctx: commands.Context):
     rock = state["rock"]
     answer = rock["name"]
 
-    # Show the answer before clearing
     await ctx.send(
         f"🛑 Round ended. The correct answer was **{answer}**.\n"
         "Use `r.r` to start a new rock for this channel."
     )
 
+    # Remember this rock as the last one used in this channel
+    LAST_ROCK[channel_id] = rock
+
     # Clear the game
     del ACTIVE_QUESTIONS[channel_id]
+
 
 # -------- STATS COMMANDS --------
 
