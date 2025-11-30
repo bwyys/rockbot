@@ -9,7 +9,10 @@ import os
 import string
 import csv
 
-TOKEN = os.getenv("TOK")
+TOKEN = os.getenv("DISCORD_TOKEN")
+print("DEBUG: DISCORD_TOKEN from env:", repr(TOKEN))
+print("DEBUG ENV KEYS:", [k for k in os.environ.keys() if "DISCORD" in k or "TOK" in k])
+
 
 # 🔗 Google Sheets CSV URL (replace this with your real URL)
 CSV_URL = "https://docs.google.com/spreadsheets/d/1oV3XHbkhez2SgCxNGZpqxNnGoB7GppmcdHKLX98b9K4/export?format=csv&gid=0"
