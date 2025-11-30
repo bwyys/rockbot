@@ -101,13 +101,6 @@ def update_stats(user_id: int, correct: bool) -> None:
 
 # -------- Utility Functions --------
 
-def normalize(text: str) -> str:
-    """Lowercase and remove spaces/punctuation for comparison."""
-    text = text.lower()
-    allowed = string.ascii_lowercase + string.digits
-    return "".join(ch for ch in text if ch in allowed)
-
-
 def levenshtein(a: str, b: str) -> int:
     """Simple Levenshtein distance (edit distance)."""
     if a == b:
@@ -133,43 +126,67 @@ def levenshtein(a: str, b: str) -> int:
     return prev[-1]
 
 
+def normalize(text: str) -> str:
+    """Lowercase and strip out non-alphanumerics for comparison."""
+    text = text.lower()
+    allowed = string.ascii_lowercase + string.digits
+    return "".join(ch for ch in text if ch in allowed)
+
+
 def is_correct_guess(raw_guess: str, rock: Dict[str, Any]) -> bool:
     """
-    Smarter matching:
+    Stricter matching rules:
     - normalize
-    - exact match vs name/aliases
-    - substring containment
-    - small typo tolerance via Levenshtein
+    - exact match vs full name/aliases
+    - match any *word* in the name/aliases (e.g. 'quartz' -> 'Rose Quartz')
+    - small typo tolerance, but only when lengths are similar
     """
     g = normalize(raw_guess)
-    if not g:
+    if not g or len(g) < 3:
+        # super short guesses like 're', 'x', etc. are never accepted
         return False
 
     answers_raw = [rock["name"]] + rock.get("aliases", [])
     answers_norm = [normalize(a) for a in answers_raw]
 
-    # Exact normalized match
+    # --- 1) Exact full-name / alias match ---
     if g in answers_norm:
         return True
 
-    # Substring logic (e.g., "orthoclase" vs "orthoclasefeldspar")
-    for ans in answers_norm:
-        if not ans:
-            continue
-        if g in ans or ans in g:
-            return True
+    # --- 2) Match any word in the name/aliases (for 'quartz' in 'Rose Quartz') ---
+    word_norms = []
+    for raw in answers_raw:
+        for w in raw.replace("-", " ").split():
+            wn = normalize(w)
+            if wn and len(wn) >= 4:  # avoid tiny words like 'of', 're', etc.
+                word_norms.append(wn)
 
-    # Small typo tolerance
+    if g in word_norms:
+        return True
+
+    # --- 3) Tight typo tolerance on full names/aliases ---
+    # Only consider answers of similar length; no substring cheating.
     for ans in answers_norm:
         if not ans:
             continue
+
+        # lengths must be reasonably close (avoid 're' vs 'bornite')
+        if abs(len(ans) - len(g)) > 2:
+            continue
+
         dist = levenshtein(g, ans)
-        max_allowed = max(1, len(ans) // 5)
-        if dist <= max_allowed:
+
+        # Allow:
+        # - distance 1 always (single-character mistake)
+        # - distance 2 only for longer words, and still < ~25% of length
+        if dist == 0:
+            return True
+        if dist == 1 and len(ans) >= 4:
+            return True
+        if len(ans) >= 6 and dist == 2 and (dist / len(ans)) <= 0.25:
             return True
 
     return False
-
 
 def choose_image(rock: Dict[str, Any], exclude: Optional[str] = None) -> str:
     """Pick a random image while avoiding the previous one."""
@@ -409,6 +426,7 @@ async def cmd_h(ctx: commands.Context):
     luster = rock.get("luster", "Unknown")
     streak = rock.get("streak", "Unknown")
     category = rock.get("category", "Unknown")
+    density = rock.get("density", "Unknown")   # NEW FIELD
 
     lines = [
         "Hint for this channel:",
@@ -416,15 +434,15 @@ async def cmd_h(ctx: commands.Context):
         f"• Luster: {luster}",
         f"• Streak: {streak}",
         f"• Category: {category}",
+        f"• Density: {density}",   # NEW
     ]
 
     await ctx.send("\n".join(lines))
 
-
 @bot.command(name="q", aliases=["quit"])
 async def cmd_q(ctx: commands.Context):
     """
-    Quit current rock for this channel without revealing.
+    Quit current rock for this channel and reveal the answer.
     Anyone can call this.
     """
     channel_id = ctx.channel.id
@@ -433,11 +451,18 @@ async def cmd_q(ctx: commands.Context):
         await ctx.send("No active rock to quit in this channel.")
         return
 
-    del ACTIVE_QUESTIONS[channel_id]
+    state = ACTIVE_QUESTIONS[channel_id]
+    rock = state["rock"]
+    answer = rock["name"]
+
+    # Show the answer before clearing
     await ctx.send(
-        "Rock for this channel has been cleared. "
-        "Use `r.r` when you're ready for a new one."
+        f"🛑 Round ended. The correct answer was **{answer}**.\n"
+        "Use `r.r` to start a new rock for this channel."
     )
+
+    # Clear the game
+    del ACTIVE_QUESTIONS[channel_id]
 
 # -------- STATS COMMANDS --------
 
