@@ -444,37 +444,35 @@ async def cmd_h(ctx: commands.Context):
         await ctx.send("No active rock in this channel. Use `r.r` first.")
         return
 
-    state = ACTIVE_QUESTIONS[channel_id]
-    rock = state["rock"]
+    rock = ACTIVE_QUESTIONS[channel_id]["rock"]
 
-    # Pull fields (they might not exist on every rock)
-    hardness = rock.get("hardness", "").strip()
-    luster   = rock.get("luster", "").strip()
-    streak   = rock.get("streak", "").strip()
-    category = rock.get("category", "").strip()
-    density  = rock.get("density", "").strip()  # only matters if you added it
+    # Pull values
+    hardness = rock.get("hardness", "Unknown")
+    luster = rock.get("luster", "Unknown")
+    streak = rock.get("streak", "Unknown")
+    category = rock.get("category", "Unknown")
+    texture = rock.get("texture", "Unknown")  # NEW
 
-    def is_known(value: str) -> bool:
-        return bool(value) and value.lower() != "unknown"
-
+    # Build lines but skip "Unknown"
     lines = ["Hint for this channel:"]
 
-    if is_known(hardness):
+    if hardness != "Unknown":
         lines.append(f"• Hardness: {hardness}")
-    if is_known(luster):
-        lines.append(f"• Luster: {luster}")
-    if is_known(streak):
-        lines.append(f"• Streak: {streak}")
-    if is_known(category):
-        lines.append(f"• Category: {category}")
-    if is_known(density):
-        lines.append(f"• Density: {density}")
 
-    # Fallback in case literally everything is unknown
-    if len(lines) == 1:
-        lines.append("• (No additional properties available for this rock.)")
+    if luster != "Unknown":
+        lines.append(f"• Luster: {luster}")
+
+    if streak != "Unknown":
+        lines.append(f"• Streak: {streak}")
+
+    if category != "Unknown":
+        lines.append(f"• Category: {category}")
+
+    if texture != "Unknown":                 # NEW
+        lines.append(f"• Texture: {texture}") # NEW
 
     await ctx.send("\n".join(lines))
+
 
 
 @bot.command(name="q", aliases=["quit"])
